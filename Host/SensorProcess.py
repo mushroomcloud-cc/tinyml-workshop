@@ -1,3 +1,5 @@
+##
+
 from asyncio.windows_events import NULL
 import socket
 from PerformanceCounter import PerformanceCounter
@@ -41,6 +43,7 @@ class UdpServer:
 
         except socket.timeout:
             raw_data = []
+            self.DataFile.Close()
 
         except Exception as e:
             raw_data = []

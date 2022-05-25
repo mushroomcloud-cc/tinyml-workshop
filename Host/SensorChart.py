@@ -1,3 +1,5 @@
+
+
 from OpenGL import GLUT, GLU, GL
 
 AxisColor = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]

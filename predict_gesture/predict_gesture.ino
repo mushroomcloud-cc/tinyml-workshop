@@ -20,7 +20,7 @@
 
 const int BUTTOM_PIN = 4;
 
-const char* AP_SSID = "iCheng-choy";
+const char* AP_SSID = "iCheng";
 const char* AP_PWD = "nopassword";
 
 const char* GESTURES[] = {

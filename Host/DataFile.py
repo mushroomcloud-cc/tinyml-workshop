@@ -3,19 +3,18 @@ import os
 
 class DataFile:
     def __init__(self):
-        base_path = os.path.dirname(__file__)
-
         self.File = None
-        self.File = open( base_path + "/data/data.csv", "a+")
+        self.BasePath = os.path.dirname(__file__)
 
 
     def __del__(self):
-        if self.File != None:
-            self.File.flush()
-            self.File.close()
+        self.Close()
 
 
     def Write(self, data):
+        if self.File == None:
+            self.Open()
+
         if len(data) >= 6:
             for i in range(6):
                 if i > 0: self.File.write("\t")
@@ -23,5 +22,17 @@ class DataFile:
 
             self.File.write("\n")   
 
+
+    def Open(self):       
+        self.File = None
+        self.File = open(self.BasePath + "/data/data.csv", "a+")
+
+
+    def Close(self):
+        if self.File != None:
+            self.File.flush()
+            self.File.close()
+
+        self.File = None
 
     
