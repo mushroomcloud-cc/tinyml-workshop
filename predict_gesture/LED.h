@@ -2,16 +2,21 @@
 #define _LED_H_
 
 const int LED_PIN = 10;
+const int BLUE_PIN = 6;
+const int RED_PIN = 7;
 
 class LED {
 public:
-    LED(int pin);
+    LED();
+    
     void On();
     void Off();
     void Toggle();
 
+    void Blue();
+    void Red();
+    void Blank();
 private:
-    int Pin;
     bool State;
 };
 

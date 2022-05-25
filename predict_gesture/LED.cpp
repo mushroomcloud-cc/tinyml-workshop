@@ -2,12 +2,14 @@
 
 #include <Arduino.h>
 
-LED::LED(int pin)
+LED::LED()
 {
-    this->Pin = pin;
-    pinMode(this->Pin, OUTPUT);
-      
+    pinMode(LED_PIN, OUTPUT);
+    pinMode(BLUE_PIN, OUTPUT);
+    pinMode(RED_PIN, OUTPUT);
+              
     this->Off();
+    this->Blank();
 }
 
 void LED::On()
@@ -27,4 +29,22 @@ void LED::Toggle()
     this->State ? this->Off() : this->On();
 }
 
-LED Led(LED_PIN);
+void LED::Blue()
+{
+    digitalWrite(RED_PIN, HIGH);
+    digitalWrite(BLUE_PIN, LOW);
+}
+
+void LED::Red()
+{
+    digitalWrite(BLUE_PIN, HIGH);
+    digitalWrite(RED_PIN, LOW);
+}
+
+void LED::Blank()
+{
+    digitalWrite(BLUE_PIN, HIGH);
+    digitalWrite(RED_PIN, HIGH);  
+}
+
+LED Led;
