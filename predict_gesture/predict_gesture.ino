@@ -33,6 +33,7 @@ const int SAMPLE_COUNT = 120;
 MPU9250 IMU(9, 8);
 UDPChannel Channel;
 HRTimer LoopTimer;
+HRTimer ExeTimer;
 
 char SerialBuffer[50];
 
@@ -102,8 +103,8 @@ void loop()
 { 
     LoopTimer.Start();
 
-    TrainingMode();
-    // PredictMode();
+    // TrainingMode();
+    PredictMode();
 
     auto t = LoopTimer.End() / 1000.0;
     // Serial.println(t);
@@ -129,43 +130,46 @@ void TrainingMode()
         Led.On();
     }
 
+    if(RecordCount > -1)
+    {
+        RecordCount++;        
+        Send();         
+    }
+      
     if(RecordCount >= SAMPLE_COUNT)
     {
         RecordCount = -1;        
         Led.Off();
-    }
-    else if(RecordCount > -1)
-    {
-        Send();         
-        RecordCount++;
-    }  
-
-/*
-    if (record_count < record_num && record_count != -1) //收集70个元组数据
-    {
-        record_count++;
-    }
-
-    if (record_count == record_num) //收集完成一次动作的70个元组数据
-    {
-
-        record_count = -1;
-    }
-*/
+    } 
 }
 
 void PredictMode()
 {
     Acquisition();
-
-    Send();
-    
-    if(DetectMotion())
+   
+    if((digitalRead(BUTTOM_PIN) == LOW) && RecordCount == -1)
+    // if(DetectMotion() && RecordCount == -1)
     {
-        //Serial.println("Start");
         RecordCount = 0;
+        Led.On();
     }
 
+    if(RecordCount >= SAMPLE_COUNT)
+    {
+        RecordCount = -1;        
+        Led.Off();
+        
+        if(Inference()) Result();
+    } 
+    else if(RecordCount > -1)
+    {
+        for(int i = 0; i < 9; i++)
+        {
+            Samples[i][RecordCount] = IMUData[i] / 32768.0;    
+        }
+      
+        RecordCount++;        
+    }  
 }
 
 
@@ -213,16 +217,13 @@ void Acquisition()
 
 void Send()
 {
-    Channel.Send((unsigned char*)IMUData, 36);  
+    Channel.Send(RecordCount, (unsigned char*)IMUData, 36);  
 }
 
-void Save()
+bool Inference()
 {
+    bool ret = false;
   
-}
-
-void Inference()
-{
     for (int k = 0; k < SAMPLE_COUNT; k++) {
       for(int i = 0; i < 6; i++)
       {
@@ -230,18 +231,55 @@ void Inference()
       }
     }
 
+    ExeTimer.Start();
     TfLiteStatus invokeStatus = tflInterpreter->Invoke();
+    unsigned long t = ExeTimer.End();
+    
     if (invokeStatus == kTfLiteOk) 
     {
-      for (int i = 0; i < NUM_GESTURES; i++) 
-      {
-          Serial.print(GESTURES[i]);
-          Serial.print(": ");
-          Serial.println(tflOutputTensor->data.f[i], 6);
-      }
+      sprintf(SerialBuffer, "Invoke In %8.6f(ms)", t / 1000.0);
+      Serial.println(SerialBuffer);
+
+      ret = true;
     }
     else
     {
         Serial.println("Invoke failed!");
+    }
+
+    return ret;
+}
+
+void Result()
+{
+    float p_threshold = 0.999;
+  
+    auto p_cross = tflOutputTensor->data.f[0];
+    auto p_circle = tflOutputTensor->data.f[1];
+
+    sprintf(SerialBuffer, "Cross: %8.6f, Circle: %8.6f", p_cross, p_circle);
+    Serial.println(SerialBuffer);
+
+    if(p_cross > p_threshold)
+    { 
+        Led.Red();
+    }
+    else if(p_circle > p_threshold)
+    {
+        Led.Blue();
+    }
+    else
+    {
+        Led.Blank();
+    
+    }  
+}
+
+void ShowOutput()
+{
+    for (int i = 0; i < NUM_GESTURES; i++) 
+    {
+      sprintf(SerialBuffer, "%s: %8.6f", GESTURES[i], tflOutputTensor->data.f[i]);
+      Serial.println(SerialBuffer);
     }
 }

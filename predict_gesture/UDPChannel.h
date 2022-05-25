@@ -9,7 +9,7 @@ public:
   UDPChannel();
 
   void ConnectAP(const char* ssid, const char* pwd);
-  void Send(unsigned char* buf, int len);
+  void Send(int count, unsigned char* buf, int len);
   
 private:
   WiFiUDP UDP;

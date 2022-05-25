@@ -2,6 +2,10 @@ import time
 
 class PerformanceCounter:
     def __init__(self):
+        self.Reset()
+
+
+    def Reset(self):
         self.Count = 0
         self.LastTick = time.perf_counter()
 

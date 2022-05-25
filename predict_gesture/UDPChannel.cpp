@@ -25,9 +25,10 @@ void UDPChannel::ConnectAP(const char* ssid, const char* pwd)
     Serial.println("");
 }
   
-void UDPChannel::Send(unsigned char* buf, int len)
+void UDPChannel::Send(int count, unsigned char* buf, int len)
 {
     UDP.beginPacket("255.255.255.255", 8000);
+    UDP.write((unsigned char*)&count, 4);
     UDP.write(buf, len);
     UDP.endPacket();
 }
