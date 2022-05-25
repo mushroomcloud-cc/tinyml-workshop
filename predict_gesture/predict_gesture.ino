@@ -14,12 +14,21 @@
 #include "MPU9250.h"
 #include "UDPChannel.h"
 #include "HRTimer.h"
+#include "LED.h"
 
 #include "model.h"
 
-const int SAMPLE_COUNT = 200;
+const int BUTTOM_PIN = 4;
+
 const char* AP_SSID = "iCheng-choy";
 const char* AP_PWD = "nopassword";
+
+const char* GESTURES[] = {
+    "cross",
+    "circle"
+};
+const int NUM_GESTURES = sizeof(GESTURES) / sizeof(GESTURES[0]);
+const int SAMPLE_COUNT = 120;
 
 MPU9250 IMU(9, 8);
 UDPChannel Channel;
@@ -31,16 +40,15 @@ int conut = 0;
 unsigned char sign = 0;
 unsigned char counter = 0;
 
-short IMUData[9];
+short SampleData[9];
+int IMUData[9];
+int LastData[9];
 
-const int accelerationThreshold_HIGH = 3.5; // 阈值为3.5倍重力
-const float ACCELERATION_THRESHOLD = 3000;
-int smooth_count = 0;
-int record_count = 0;
+const float ACCELERATION_THRESHOLD = 2E6;
+const int SMOTH_COUNT = 5;
+int RecordCount = 0;
 
 float Samples[6][SAMPLE_COUNT];
-
-const int record_num = 70;
 
 tflite::MicroErrorReporter tflErrorReporter;
 tflite::ops::micro::AllOpsResolver tflOpsResolver;
@@ -53,40 +61,14 @@ TfLiteTensor* tflOutputTensor = nullptr;
 constexpr int tensorArenaSize = 8 * 1024;
 byte tensorArena[tensorArenaSize];
 
-const char* GESTURES[] = {
-    "punch",
-    "flex"
-};
-#define NUM_GESTURES (sizeof(GESTURES) / sizeof(GESTURES[0]))
-
-int dirty = 0;
-
 void setup()
 {
+    pinMode(BUTTOM_PIN, INPUT_PULLUP);
+ 
     Serial.begin(115200);
     Channel.ConnectAP(AP_SSID, AP_PWD);
 
-    /*
-  mySerial.begin(115200, SERIAL_8N1, 15, 21);
-  delay(500);
-  mySerial.write(0XA5); 
-  mySerial.write(0X55);
-  mySerial.write(0X57);    //初始化GY25Z,输出陀螺和欧拉角
-  mySerial.write(0X51); 
-  delay(100); 
-  mySerial.write(0XA5); 
-  mySerial.write(0X56);    //初始化GY25Z,连续输出模式
-  mySerial.write(0X02);    //初始化GY25Z,连续输出模式
-  mySerial.write(0XFD);
-  delay(100);
-  pixels.begin(); 
-  pixels.clear(); //清除颜色
-  pixels.show(); //打印
-  pixels.setPixelColor(0, pixels.Color(0,0,0)); //调颜色
-  pixels.show(); //打印
-  */
-
-    record_count = -1; //防止第一次数据的错误触发
+    RecordCount = -1; // 待采样
 
     Serial.println("Loading Model");
     tflModel = tflite::GetModel(model);
@@ -117,36 +99,48 @@ void setup()
 }
 
 void loop()
-{
+{ 
     LoopTimer.Start();
 
+    TrainingMode();
+    // PredictMode();
+
+    auto t = LoopTimer.End() / 1000.0;
+    // Serial.println(t);
+
+    if(t < 10) 
+    {
+      delay(10 - t); 
+    }
+}
+
+//
+// Functions
+//
+
+
+void TrainingMode()
+{
     Acquisition();
-    DetectMotion();
 
-    while (dirty != 1) {
-
-        //measure();
-        //analysis();
-
-        //Inference();
-
-
-        //Serial.println(micros() - t);
-
-        dirty = 1;
+    if(digitalRead(BUTTOM_PIN) == LOW && RecordCount == -1)
+    {
+        RecordCount = 0;
+        Led.On();
     }
 
-
-
+    if(RecordCount >= SAMPLE_COUNT)
+    {
+        RecordCount = -1;        
+        Led.Off();
+    }
+    else if(RecordCount > -1)
+    {
+        Send();         
+        RecordCount++;
+    }  
 
 /*
-    float aSum = fabs(aX) + fabs(aY) + fabs(aZ);
-
-    if (aSum >= accelerationThreshold_HIGH && record_count == -1) //动作开始
-    {
-        record_count = 0;
-    }
-
     if (record_count < record_num && record_count != -1) //收集70个元组数据
     {
         record_count++;
@@ -158,35 +152,73 @@ void loop()
         record_count = -1;
     }
 */
-
-    auto t = LoopTimer.End();
-
-    delay(10 - t / 1000);
 }
+
+void PredictMode()
+{
+    Acquisition();
+
+    Send();
+    
+    if(DetectMotion())
+    {
+        //Serial.println("Start");
+        RecordCount = 0;
+    }
+
+}
+
 
 bool DetectMotion()
 {
     float sum = 0;
 
-    for(int i = 0; i < 3; i++)
+    for(int i = 3; i < 6; i++)
     {
-        float a = (float)IMUData[i];
+        float a = (float)IMUData[i] - (float)LastData[i];
         sum += a * a;
     }
 
-    Serial.println(sum);
+    for(int i = 0; i < 9; i++)
+    {
+        LastData[i] = IMUData[i];
+    }
+
+    bool ret = sum > ACCELERATION_THRESHOLD;
+    // if(ret) Serial.println(sum);
     
-    return sum > ACCELERATION_THRESHOLD;
+    return ret;
 }
 
 void Acquisition()
 {
-    IMU.Read(IMUData);
+    for(int i = 0; i < 9; i++)
+    {
+        IMUData[i] = 0;      
+    }
+
+    for(int c = 0; c < SMOTH_COUNT; c++)
+    {
+        IMU.Read(SampleData);
+        
+        for(int i = 0; i < 9; i++)
+        {
+            IMUData[i] += SampleData[i];      
+        }
+    }
 
     // sprintf(SerialBuffer, "%+5d\t%+5d\t%+5d | %+5d\t%+5d\t%+5d | %+5d\t%+5d\t%+5d\r\n", IMUData[0], IMUData[1], IMUData[2], IMUData[3], IMUData[4], IMUData[5], IMUData[6], IMUData[7], IMUData[8]);
     // Serial.print(SerialBuffer);
+}
 
-    Channel.Send((unsigned char*)IMUData, 18);  
+void Send()
+{
+    Channel.Send((unsigned char*)IMUData, 36);  
+}
+
+void Save()
+{
+  
 }
 
 void Inference()
@@ -199,15 +231,17 @@ void Inference()
     }
 
     TfLiteStatus invokeStatus = tflInterpreter->Invoke();
-    if (invokeStatus != kTfLiteOk) {
-        Serial.println("Invoke failed!");
-        while (1)
-            ;
-        return;
+    if (invokeStatus == kTfLiteOk) 
+    {
+      for (int i = 0; i < NUM_GESTURES; i++) 
+      {
+          Serial.print(GESTURES[i]);
+          Serial.print(": ");
+          Serial.println(tflOutputTensor->data.f[i], 6);
+      }
     }
-    for (int i = 0; i < NUM_GESTURES; i++) {
-        Serial.print(GESTURES[i]);
-        Serial.print(": ");
-        Serial.println(tflOutputTensor->data.f[i], 6);
+    else
+    {
+        Serial.println("Invoke failed!");
     }
 }

@@ -29,7 +29,7 @@ void MPU9250::Read(short* data)
     // if (ST1 & 0x01) 
     {
         // Read magnetometer data
-        I2Cread(AK8963_ADDRESS, AK8963_XOUT_L, 6, buff + 14);
+        // I2Cread(AK8963_ADDRESS, AK8963_XOUT_L, 6, buff + 14);
     }
 
     // ax, ay, az
