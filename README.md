@@ -39,7 +39,9 @@
 - 100采样/s
 
 ### 模型
+
 ![image](Images/network.png)
+
 - 线性全连接网络
 - 720-向量输入
 - 2-向量输出
@@ -58,14 +60,13 @@
 
 训练
 
-
 推理应用
 ![image](Images/inference.png)
-
 
 ## 代码
 
 - Host
+
 1. 数据采集 SensorProcess.py
 1. 模型创建与训练 tinyml.py
 
