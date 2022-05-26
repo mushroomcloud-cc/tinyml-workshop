@@ -46,17 +46,29 @@
 
 ## 流程
 
+![image](Images/process.png)
+
 数据采集
+
+- UDP数据传输
 
 预处理
 
+- 滑动平均
+
 训练
 
+
 推理应用
+![image](Images/inference.png)
+
 
 ## 代码
 
 - Host
+1. 数据采集 SensorProcess.py
+1. 模型创建与训练 tinyml.py
+
 - prediect_gesture
 
 ## 网站
