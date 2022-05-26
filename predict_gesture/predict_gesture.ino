@@ -252,7 +252,7 @@ bool Inference()
 
 void Result()
 {
-    float p_threshold = 0.999;
+    float p_threshold = 0.99;
   
     auto p_cross = tflOutputTensor->data.f[0];
     auto p_circle = tflOutputTensor->data.f[1];

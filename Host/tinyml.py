@@ -21,7 +21,7 @@ def CreateModel():
     model.add(layers.Dense(2, activation='softmax'))
 
     opt_adam = keras.optimizers.Adam()
-    model.compile(optimizer=opt_adam, loss='sparse_categorical_crossentropy', metrics=['sparse_categorical_accuracy'])   
+    model.compile(optimizer=opt_adam, loss='categorical_crossentropy', metrics=['categorical_accuracy'])   
     model.summary()
     
     return model
@@ -72,10 +72,10 @@ def Hex2H(model, h_model_name):
     c_str += '#define ' + h_model_name.upper() + '_H\n'
 
     # Add array length at top of file
-    c_str += '\nunsigned int ' + h_model_name + '_len = ' + str(model_len) + ';\n'
+    c_str += '\nconst unsigned int ' + h_model_name + '_len = ' + str(model_len) + ';\n'
 
     # Declare C variable
-    c_str += 'unsigned char ' + h_model_name + '[] = {'
+    c_str += 'const unsigned char ' + h_model_name + '[] = {'
     hex_array = []
     for i, val in enumerate(model) :
         # Construct string from hex
@@ -105,8 +105,8 @@ def ReadDataFile(file, v):
     size = SAMPLES_PER_GESTURE * 6
 
     dataX = np.empty([0, size])
-    dataY = np.empty([0,])
-    # dataY = np.empty([0, 2])
+    # dataY = np.empty([0,])
+    dataY = np.empty([0, 2])
 
     base_path = os.path.dirname(__file__)
     file = open(base_path + "/data/" + file, "r")
@@ -125,8 +125,8 @@ def ReadDataFile(file, v):
             tmp = np.expand_dims(tmp, axis=0)
 
             dataX = np.concatenate((dataX, tmp), axis=0)
-            dataY = np.append(dataY, v)
-            #dataY = np.concatenate((dataY, [[0, 1]] if v == 0 else [[1, 0]]))
+            # dataY = np.append(dataY, v)
+            dataY = np.concatenate((dataY, [[1, 0]] if v == 0 else [[0, 1]]))
 
     return dataX, dataY
 
