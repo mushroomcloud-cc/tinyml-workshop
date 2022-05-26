@@ -24,8 +24,8 @@ const char* AP_SSID = "iCheng";
 const char* AP_PWD = "nopassword";
 
 const char* GESTURES[] = {
-    "cross",
-    "circle"
+  "cross",
+  "circle"
 };
 const int NUM_GESTURES = sizeof(GESTURES) / sizeof(GESTURES[0]);
 const int SAMPLE_COUNT = 120;
@@ -47,7 +47,7 @@ int LastData[9];
 
 const float ACCELERATION_THRESHOLD = 2E6;
 const int SMOTH_COUNT = 5;
-int RecordCount = 0;
+int RecordCount = -1; // -1 表示数据采集未启动
 
 float Samples[6][SAMPLE_COUNT];
 
@@ -62,224 +62,203 @@ TfLiteTensor* tflOutputTensor = nullptr;
 constexpr int tensorArenaSize = 8 * 1024;
 byte tensorArena[tensorArenaSize];
 
-void setup()
-{
-    pinMode(BUTTOM_PIN, INPUT_PULLUP);
- 
-    Serial.begin(115200);
-    Channel.ConnectAP(AP_SSID, AP_PWD);
+void setup() {
+  pinMode(BUTTOM_PIN, INPUT_PULLUP);
 
-    RecordCount = -1; // 待采样
+  Serial.begin(115200);
+  Channel.ConnectAP(AP_SSID, AP_PWD);
 
-    Serial.println("Loading Model");
-    tflModel = tflite::GetModel(model);
+  Serial.println("Starting IMU...");
+  IMU.Init();
 
-    int ModelVersion = tflModel->version();
-
-    sprintf(SerialBuffer, "Model Version: %d, TFLite Version: %d", ModelVersion, TFLITE_SCHEMA_VERSION);
-    Serial.println(SerialBuffer);
-
-    if (ModelVersion != TFLITE_SCHEMA_VERSION) {
-        Serial.println("Model schema mismatch!");
-        while (1)
-            ;
-    } else {
-        Serial.println("Model Loaded!");
-    }
-
-    tflInterpreter = new tflite::MicroInterpreter(tflModel, tflOpsResolver, tensorArena, tensorArenaSize, &tflErrorReporter);
-    tflInterpreter->AllocateTensors();
-    tflInputTensor = tflInterpreter->input(0);
-    tflOutputTensor = tflInterpreter->output(0);
-
-    sprintf(SerialBuffer, "Input Size: %d[%d, %d], Outpu Size: %d[%d, %d]", tflInputTensor->dims->size, tflInputTensor->dims->data[0], tflInputTensor->dims->data[1], tflOutputTensor->dims->size, tflOutputTensor->dims->data[0], tflOutputTensor->dims->data[1]);
-    Serial.println(SerialBuffer);
-
-    Serial.println("Starting IMU...");
-    IMU.Init();
+  LoadModel();
 }
 
-void loop()
-{ 
-    LoopTimer.Start();
+void loop() {
+  LoopTimer.Start();
 
-    // TrainingMode();
-    PredictMode();
+  // TrainingMode();
+  PredictMode();
 
-    auto t = LoopTimer.End() / 1000.0;
-    // Serial.println(t);
-
-    if(t < 10) 
-    {
-      delay(10 - t); 
-    }
+  auto t = LoopTimer.End() / 1000.0;
+  // Serial.println(t);
+  if (t < 10) {
+    delay(10 - t);
+  }
 }
 
 //
 // Functions
 //
 
+void LoadModel() {
+  Serial.println("Loading Model");
+  tflModel = tflite::GetModel(model);
 
-void TrainingMode()
-{
-    Acquisition();
+  int ModelVersion = tflModel->version();
 
-    if(digitalRead(BUTTOM_PIN) == LOW && RecordCount == -1)
-    {
-        RecordCount = 0;
-        Led.On();
-    }
+  sprintf(SerialBuffer, "Model Version: %d, TFLite Version: %d", ModelVersion, TFLITE_SCHEMA_VERSION);
+  Serial.println(SerialBuffer);
 
-    if(RecordCount > -1)
-    {
-        RecordCount++;        
-        Send();         
-    }
-      
-    if(RecordCount >= SAMPLE_COUNT)
-    {
-        RecordCount = -1;        
-        Led.Off();
-    } 
+  if (ModelVersion != TFLITE_SCHEMA_VERSION) {
+    Serial.println("Model schema mismatch!");
+  } else {
+    Serial.println("Model Loaded!");
+  }
+
+  tflInterpreter = new tflite::MicroInterpreter(tflModel, tflOpsResolver, tensorArena, tensorArenaSize, &tflErrorReporter);
+  tflInterpreter->AllocateTensors();
+  tflInputTensor = tflInterpreter->input(0);
+  tflOutputTensor = tflInterpreter->output(0);
+
+  sprintf(SerialBuffer, "Input Size: %d[%d, %d], Outpu Size: %d[%d, %d]", tflInputTensor->dims->size, tflInputTensor->dims->data[0], tflInputTensor->dims->data[1], tflOutputTensor->dims->size, tflOutputTensor->dims->data[0], tflOutputTensor->dims->data[1]);
+  Serial.println(SerialBuffer);
+}
+
+void TrainingMode() {
+  Acquisition();
+
+  if (digitalRead(BUTTOM_PIN) == LOW && RecordCount == -1) {
+    RecordCount = 0;
+    Led.On();
+  }
+
+  if (RecordCount > -1) {
+    RecordCount++;
+    Send();
+  }
+
+  if (RecordCount >= SAMPLE_COUNT) {
+    RecordCount = -1;
+    Led.Off();
+  }
 }
 
 void PredictMode()
 {
-    Acquisition();
-   
-    if((digitalRead(BUTTOM_PIN) == LOW) && RecordCount == -1)
-    // if(DetectMotion() && RecordCount == -1)
-    {
-        RecordCount = 0;
-        Led.On();
+  Acquisition();
+
+  if ((/*(DetectMotion() ||*/ digitalRead(BUTTOM_PIN) == LOW) && RecordCount == -1) {
+    RecordCount = 0;
+    Led.On();
+  }
+
+  if (RecordCount >= SAMPLE_COUNT) {
+    RecordCount = -1;
+    Led.Off();
+
+    if (Inference()) Result();
+  }
+  else if (RecordCount > -1) {
+    for (int i = 0; i < 9; i++) {
+      Samples[i][RecordCount] = IMUData[i] / 32768.0;
     }
 
-    if(RecordCount >= SAMPLE_COUNT)
-    {
-        RecordCount = -1;        
-        Led.Off();
-        
-        if(Inference()) Result();
-    } 
-    else if(RecordCount > -1)
-    {
-        for(int i = 0; i < 9; i++)
-        {
-            Samples[i][RecordCount] = IMUData[i] / 32768.0;    
-        }
-      
-        RecordCount++;        
-    }  
+    RecordCount++;
+  }
 }
 
 
-bool DetectMotion()
-{
-    float sum = 0;
+bool DetectMotion() {
+  float sum = 0;
 
-    for(int i = 3; i < 6; i++)
-    {
-        float a = (float)IMUData[i] - (float)LastData[i];
-        sum += a * a;
-    }
+  for (int i = 3; i < 6; i++) {
+    float a = (float)IMUData[i] - (float)LastData[i];
+    sum += a * a;
+  }
 
-    for(int i = 0; i < 9; i++)
-    {
-        LastData[i] = IMUData[i];
-    }
+  for (int i = 0; i < 9; i++) {
+    LastData[i] = IMUData[i];
+  }
 
-    bool ret = sum > ACCELERATION_THRESHOLD;
-    // if(ret) Serial.println(sum);
-    
-    return ret;
+  bool ret = sum > ACCELERATION_THRESHOLD;
+  // if(ret) Serial.println(sum);
+
+  return ret;
 }
 
-void Acquisition()
-{
-    for(int i = 0; i < 9; i++)
-    {
-        IMUData[i] = 0;      
-    }
+void Acquisition() {
+  for (int i = 0; i < 9; i++) {
+    IMUData[i] = 0;
+  }
 
-    for(int c = 0; c < SMOTH_COUNT; c++)
-    {
-        IMU.Read(SampleData);
-        
-        for(int i = 0; i < 9; i++)
-        {
-            IMUData[i] += SampleData[i];      
-        }
-    }
+  for (int c = 0; c < SMOTH_COUNT; c++) {
+    IMU.Read(SampleData);
 
-    // sprintf(SerialBuffer, "%+5d\t%+5d\t%+5d | %+5d\t%+5d\t%+5d | %+5d\t%+5d\t%+5d\r\n", IMUData[0], IMUData[1], IMUData[2], IMUData[3], IMUData[4], IMUData[5], IMUData[6], IMUData[7], IMUData[8]);
-    // Serial.print(SerialBuffer);
+    for (int i = 0; i < 9; i++)  {
+      IMUData[i] += SampleData[i];
+    }
+  }
+
+  // sprintf(SerialBuffer, "%+5d\t%+5d\t%+5d | %+5d\t%+5d\t%+5d | %+5d\t%+5d\t%+5d\r\n", IMUData[0], IMUData[1], IMUData[2], IMUData[3], IMUData[4], IMUData[5], IMUData[6], IMUData[7], IMUData[8]);
+  // Serial.print(SerialBuffer);
 }
 
 void Send()
 {
-    Channel.Send(RecordCount, (unsigned char*)IMUData, 36);  
+  Channel.Send(RecordCount, (unsigned char*)IMUData, 36);
 }
 
 bool Inference()
 {
-    bool ret = false;
-  
-    for (int k = 0; k < SAMPLE_COUNT; k++) {
-      for(int i = 0; i < 6; i++)
-      {
-        tflInputTensor->data.f[k * 6 + i] = Samples[i][k];
-      }
-    }
+  bool ret = false;
 
-    ExeTimer.Start();
-    TfLiteStatus invokeStatus = tflInterpreter->Invoke();
-    unsigned long t = ExeTimer.End();
-    
-    if (invokeStatus == kTfLiteOk) 
-    {
-      sprintf(SerialBuffer, "Invoke In %8.6f(ms)", t / 1000.0);
-      Serial.println(SerialBuffer);
-
-      ret = true;
+  // Copy Data to Model Input
+  for (int k = 0; k < SAMPLE_COUNT; k++) {
+    for (int i = 0; i < 6; i++)  {
+      tflInputTensor->data.f[k * 6 + i] = Samples[i][k];
     }
-    else
-    {
-        Serial.println("Invoke failed!");
-    }
+  }
 
-    return ret;
+  // Start Inference
+  ExeTimer.Start();
+  TfLiteStatus invokeStatus = tflInterpreter->Invoke();
+  unsigned long t = ExeTimer.End();
+
+  // Check Result
+  if (invokeStatus == kTfLiteOk) {
+    sprintf(SerialBuffer, "Invoke In %8.6f(ms)", t / 1000.0);
+    Serial.println(SerialBuffer);
+
+    ret = true;
+  }
+  else {
+    Serial.println("Invoke failed!");
+  }
+
+  return ret;
 }
 
 void Result()
 {
-    float p_threshold = 0.99;
-  
-    auto p_cross = tflOutputTensor->data.f[0];
-    auto p_circle = tflOutputTensor->data.f[1];
+  float p_threshold = 0.99;
 
-    sprintf(SerialBuffer, "Cross: %8.6f, Circle: %8.6f", p_cross, p_circle);
-    Serial.println(SerialBuffer);
+  auto p_cross = tflOutputTensor->data.f[0];
+  auto p_circle = tflOutputTensor->data.f[1];
 
-    if(p_cross > p_threshold)
-    { 
-        Led.Red();
-    }
-    else if(p_circle > p_threshold)
-    {
-        Led.Blue();
-    }
-    else
-    {
-        Led.Blank();
-    
-    }  
+  sprintf(SerialBuffer, "Cross: %8.6f, Circle: %8.6f", p_cross, p_circle);
+  Serial.println(SerialBuffer);
+
+  if (p_cross > p_threshold)
+  {
+    Led.Red();
+  }
+  else if (p_circle > p_threshold)
+  {
+    Led.Blue();
+  }
+  else
+  {
+    Led.Blank();
+
+  }
 }
 
 void ShowOutput()
 {
-    for (int i = 0; i < NUM_GESTURES; i++) 
-    {
-      sprintf(SerialBuffer, "%s: %8.6f", GESTURES[i], tflOutputTensor->data.f[i]);
-      Serial.println(SerialBuffer);
-    }
+  for (int i = 0; i < NUM_GESTURES; i++)
+  {
+    sprintf(SerialBuffer, "%s: %8.6f", GESTURES[i], tflOutputTensor->data.f[i]);
+    Serial.println(SerialBuffer);
+  }
 }
