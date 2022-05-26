@@ -250,7 +250,6 @@ void Result()
   else
   {
     Led.Blank();
-
   }
 }
 
