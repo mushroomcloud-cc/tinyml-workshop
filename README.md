@@ -60,6 +60,8 @@
 
 训练
 
+优化、转换
+
 推理应用
 ![image](Images/inference.png)
 
